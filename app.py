@@ -25,7 +25,7 @@ if uploaded_file is not None:
         st.write("Analizăm structura datelor...")
         if st.button("Generează Raport AI"):
             with st.spinner('AI-ul analizează cifrele...'):
-                #
+                
                 prompt = f"""
                 Ești un consultant de business expert. 
                 Analizează următoarele date statistice ale unui set de date de vânzări/business.
@@ -47,7 +47,7 @@ if uploaded_file is not None:
                 st.markdown(response.text)
 
         st.subheader("📊 Analiză Grafică")
-        col1, col2 = st.columns(2) # Facem doua coloane vizuale pe site
+        col1, col2 = st.columns(2)
         all_columns = df.columns.tolist()
         numerice = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
         with col1:
@@ -61,4 +61,5 @@ if uploaded_file is not None:
             st.info(f"Graficul arată evoluția **{ya_axis}** în funcție de **{xa_axis}**.")
 
     except Exception as e:
+
         st.error(f"A apărut o eroare la citirea fișierului: {e}")
