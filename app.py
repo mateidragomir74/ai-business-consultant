@@ -23,43 +23,36 @@ if uploaded_file is not None:
         descriere_date = df.describe().to_string()
         coloane = list(df.columns)
         st.write("Analizăm structura datelor...")
-        if st.button("Generează Raport AI"):
-            with st.spinner('AI-ul analizează cifrele...'):
-                
+        st.divider()
+        st.subheader("🧠 Consultantul Virtual")
+        
+        if st.button("Generează Raport Detaliat"):
+            with st.spinner('AI-ul analizează relația dintre coloane...'):
                 prompt = f"""
-                Ești un consultant de business expert. 
-                Analizează următoarele date statistice ale unui set de date de vânzări/business.
+                Actionează ca un Business Analyst Senior.
+                Analizează datele următoare dintr-un fișier de business.
+                Utilizatorul este interesat specific de relația dintre:
+                - Axa X (Timp/Categorie): {xa_axis}
+                - Axa Y (Valoare): {ya_axis}
+                Statistici sumare pentru coloana {ya_axis}:
+                {df[ya_axis].describe().to_string()}
 
-                Coloanele disponibile sunt: {coloane}
-
-                Statistici sumare (descriere matematică):
-                {descriere_date}
-
-                Sarcina ta:
-                1. Identifică trenduri sau anomalii evidente din aceste cifre.
-                2. Oferă 3 sfaturi acționabile pentru patronul afacerii, bazat strict pe aceste cifre.
-                3. Scrie în limba Română, ton profesional dar direct.
+                Te rog să generezi un raport care să conțină:
+                1. O interpretare a trendului (crește, scade, e constant?).
+                2. Identificarea oricăror anomalii (valori extreme).
+                3. Două recomandări strategice clare pentru a îmbunătăți {ya_axis}.
+                
+                Răspunsul trebuie să fie formatat frumos (Markdown), în limba Română.
                 """
-
+                
                 response = model.generate_content(prompt)
-
-                st.subheader("📝 Raportul Consultantului AI")
-                st.markdown(response.text)
-
-        st.subheader("📊 Analiză Grafică")
-        col1, col2 = st.columns(2)
-        all_columns = df.columns.tolist()
-        numerice = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
-        with col1:
-            xa_axis = st.selectbox("Alege axa X (Timp/Nume):", all_columns)
-        with col2:
-            ya_axis = st.selectbox("Alege axa Y (Valoare):", numerice)
-        if st.button("Generează Grafic"):
-            chart_data = df.set_index(xa_axis)
-            st.area_chart(chart_data[ya_axis])
-
-            st.info(f"Graficul arată evoluția **{ya_axis}** în funcție de **{xa_axis}**.")
-
-    except Exception as e:
-
-        st.error(f"A apărut o eroare la citirea fișierului: {e}")
+                report_text = response.text
+                
+                st.markdown(report_text)
+    
+                st.download_button(
+                    label="📥 Descarcă Raportul (TXT)",
+                    data=report_text,
+                    file_name="Raport_Business_AI.txt",
+                    mime="text/plain"
+                )
