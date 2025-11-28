@@ -19,8 +19,9 @@ def genereaza_pdf(report_text):
     pdf.add_page()
     pdf.set_font("Arial", size=12)
     pdf.cell(200, 10, txt="Raport AI", align="C", ln=1)
-    pdf.multi_cell(200, 10, txt=report_text, align="C", ln=2)
-    return pdf.output(dest='S').encode('latin-1', 'replace')
+    text_safe = report_text.encode('latin-1', 'replace').decode('latin-1')
+    pdf.multi_cell(0, 10, txt=text_safe, align="L")
+    return pdf.output(dest='S').encode('latin-1')
 
 
 st.title("🤖 AI Business Consultant")
