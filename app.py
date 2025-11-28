@@ -98,7 +98,7 @@ if uploaded_file is not None:
                     st.markdown(report_text)
 
                     st.download_button(
-                        label="📥 Descarcă Raportul (TXT)",
+                        label="📥 Descarcă Raportul (PDF)",
                         data=genereaza_pdf(report_text),
                         file_name="Raport_Business_AI.pdf",
                         mime="application/pdf"
@@ -106,4 +106,5 @@ if uploaded_file is not None:
 
     except Exception as e:
         st.error(f"Eroare la procesarea fișierului: {e}")
+
 
