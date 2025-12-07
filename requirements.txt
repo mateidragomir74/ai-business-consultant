@@ -1,6 +1,2 @@
 streamlit
-pandas
-openpyxl
 google-generativeai
-matplotlib
-fpdf
