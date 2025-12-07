@@ -1,110 +1,112 @@
-from fpdf import FPDF
-import google.generativeai as genai
-import pandas as pd
 import streamlit as st
-import os
-try:
+import xml.etree.ElementTree as ET
+import google.generativeai as genai
 
+
+st.set_page_config(page_title="Auditor e-Factura", page_icon="🛡️")
+
+try:
     API_KEY = st.secrets["GOOGLE_API_KEY"]
 except:
-
-    API_KEY = "PUNE_CHEIA_AICI_DOAR_PENTRU_TEST_LOCAL"
+    API_KEY = "PUNE_CHEIA_AICI_LOCAL"
 
 genai.configure(api_key=API_KEY)
 model = genai.GenerativeModel('gemini-2.0-flash')
 
 
-def genereaza_pdf(report_text):
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt="Raport AI", align="C", ln=1)
-    text_safe = report_text.encode('latin-1', 'replace').decode('latin-1')
-    pdf.multi_cell(0, 10, txt=text_safe, align="L")
-    return pdf.output(dest='S').encode('latin-1')
 
-
-st.title("🤖 AI Business Consultant")
-st.write("Încarcă fișierul de vânzări (CSV sau Excel) și lasă AI-ul să găsească problemele.")
-
-uploaded_file = st.file_uploader("Alege fișierul", type=['csv', 'xlsx'])
-
-if uploaded_file is not None:
+def analizeaza_xml(uploaded_file):
     try:
+        tree = ET.parse(uploaded_file)
+        root = tree.getroot()
 
-        if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file)
 
-        st.success("Fișier încărcat cu succes!")
+        ns = {
+            'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+            'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2'
+        }
 
-        with st.expander("👀 Vezi datele brute"):
-            st.dataframe(df.head())
 
-        st.subheader("📊 Analiză Grafică")
-        st.write("Alege ce vrei să analizezi:")
+        data = {
+            "furnizor": root.find('.//cac:AccountingSupplierParty/cac:Party/cac:PartyName/cbc:Name', ns).text,
+            "client": root.find('.//cac:AccountingCustomerParty/cac:Party/cac:PartyName/cbc:Name', ns).text,
+            "data_emitere": root.find('cbc:IssueDate', ns).text,
+            "subtotal": float(root.find('.//cac:LegalMonetaryTotal/cbc:LineExtensionAmount', ns).text),
+            "total_calculat": float(root.find('.//cac:LegalMonetaryTotal/cbc:TaxInclusiveAmount', ns).text),
+            "total_de_plata": float(root.find('.//cac:LegalMonetaryTotal/cbc:PayableAmount', ns).text),
+            "linii_factura": []  # Vom colecta si produsele pentru AI
+        }
+
+
+        for linie in root.findall('.//cac:InvoiceLine', ns):
+            nume_produs = linie.find('.//cac:Item/cbc:Name', ns).text
+            pret = linie.find('.//cbc:LineExtensionAmount', ns).text
+            data["linii_factura"].append(f"- {nume_produs}: {pret} RON")
+
+        return data
+
+    except Exception as e:
+        return {"eroare": str(e)}
+
+
+
+st.title("🛡️ Auditor Digital e-Factura")
+st.markdown("Verifică instantaneu XML-urile ANAF pentru erori matematice și riscuri fiscale.")
+
+fisier = st.file_uploader("Încarcă fișierul XML (UBL 2.1)", type=["xml"])
+
+if fisier:
+
+    rezultat = analizeaza_xml(fisier)
+
+    if "eroare" in rezultat:
+        st.error(
+            f"Nu am putut citi fișierul XML. Asigură-te că e format e-Factura valid.\nEroare: {rezultat['eroare']}")
+    else:
 
         col1, col2 = st.columns(2)
-
-        all_columns = df.columns.tolist()
-        numerice = df.select_dtypes(include=['float64', 'int64']).columns.tolist()
-
-        with col1:
-            xa_axis = st.selectbox("Axa X (Timp/Categorie):", all_columns)
-
-        with col2:
-            if numerice:
-                ya_axis = st.selectbox("Axa Y (Valoare):", numerice)
-            else:
-                st.warning("Nu am găsit coloane cu numere!")
-                ya_axis = None
-
-        if ya_axis:
-            st.area_chart(df.set_index(xa_axis)[ya_axis])
+        col1.info(f"📤 **Furnizor:** {rezultat['furnizor']}")
+        col2.info(f"📥 **Client:** {rezultat['client']}")
 
         st.divider()
 
-        st.subheader("🧠 Consultantul Virtual")
 
-        if st.button("Generează Raport Detaliat"):
-            if not ya_axis:
-                st.error("Trebuie să selectezi o coloană numerică pentru analiză!")
-            else:
-                with st.spinner('AI-ul analizează relația dintre coloane...'):
+        st.subheader("1. Verificare Matematică")
 
-                    prompt = f"""
-                    Actionează ca un Business Analyst Senior.
-                    Analizează datele următoare dintr-un fișier de business.
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Subtotal (Fără TVA)", f"{rezultat['subtotal']:.2f} RON")
+        c2.metric("Total Calculat (Corect)", f"{rezultat['total_calculat']:.2f} RON")
+        c3.metric("Total Cerut (Payable)", f"{rezultat['total_de_plata']:.2f} RON")
 
-                    Utilizatorul este interesat specific de relația dintre:
-                    - Axa X (Timp/Categorie): {xa_axis}
-                    - Axa Y (Valoare): {ya_axis}
+        diferenta = rezultat['total_de_plata'] - rezultat['total_calculat']
 
-                    Statistici sumare pentru coloana {ya_axis}:
-                    {df[ya_axis].describe().to_string()}
+        if abs(diferenta) > 0.01:
+            st.error(f"❌ ALERTĂ: Factura are erori! Diferență: {diferenta:.2f} RON")
+            st.warning("Această factură riscă să fie respinsă de contabilitate sau ANAF.")
+        else:
+            st.success("✅ Factura este corectă matematic.")
 
-                    Te rog să generezi un raport care să conțină:
-                    1. O interpretare a trendului (crește, scade, e constant?).
-                    2. Identificarea oricăror anomalii (valori extreme).
-                    3. Două recomandări strategice clare pentru a îmbunătăți {ya_axis}.
-
-                    Răspunsul trebuie să fie formatat frumos (Markdown), în limba Română.
-                    """
-
-                    response = model.generate_content(prompt)
-                    report_text = response.text
-
-                    st.markdown(report_text)
-
-                    st.download_button(
-                        label="📥 Descarcă Raportul (PDF)",
-                        data=genereaza_pdf(report_text),
-                        file_name="Raport_Business_AI.pdf",
-                        mime="application/pdf"
-                    )
-
-    except Exception as e:
-        st.error(f"Eroare la procesarea fișierului: {e}")
+        st.divider()
 
 
+        st.subheader("2. Audit Fiscal (AI)")
+
+        if st.button("Scanează pentru Riscuri (Gemini)"):
+            with st.spinner("AI-ul analizează conținutul facturii..."):
+                prompt = f"""
+                Ești un auditor fiscal expert în legislația din România.
+                Analizează următoarea factură:
+                Furnizor: {rezultat['furnizor']}
+                Linii factură:
+                {chr(10).join(rezultat['linii_factura'])}
+
+                Sarcina ta:
+                1. Analizează dacă descrierea produselor/serviciilor este suficient de clară pentru ANAF (evită descrieri vagi gen "Servicii diverse").
+                2. Identifică potențiale riscuri de nedeductibilitate.
+                3. Dă un verdict scurt: "RISC MIC", "RISC MEDIU" sau "RISC MARE".
+
+                Răspunde scurt și la obiect în limba Română.
+                """
+
+                response = model.generate_content(prompt)
+                st.write(response.text)
