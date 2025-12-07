@@ -34,7 +34,7 @@ def analizeaza_xml(uploaded_file):
             "subtotal": float(root.find('.//cac:LegalMonetaryTotal/cbc:LineExtensionAmount', ns).text),
             "total_calculat": float(root.find('.//cac:LegalMonetaryTotal/cbc:TaxInclusiveAmount', ns).text),
             "total_de_plata": float(root.find('.//cac:LegalMonetaryTotal/cbc:PayableAmount', ns).text),
-            "linii_factura": []  # Vom colecta si produsele pentru AI
+            "linii_factura": [] 
         }
 
 
@@ -110,3 +110,4 @@ if fisier:
 
                 response = model.generate_content(prompt)
                 st.write(response.text)
+
