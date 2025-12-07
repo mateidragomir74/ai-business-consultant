@@ -10,7 +10,7 @@ API_KEY = st.secrets["GOOGLE_API_KEY"]
 
 
 genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-2.0-flash')
 
 
 
@@ -120,6 +120,7 @@ if fisier:
                         st.warning("⚠️ AI-ul este suprasolicitat (Limita Free Tier). Te rog așteaptă 1 minut și încearcă din nou.")
                     else:
                         st.error(f"Eroare la comunicarea cu AI: {e}")
+
 
 
 
