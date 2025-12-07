@@ -5,8 +5,8 @@ import google.generativeai as genai
 
 st.set_page_config(page_title="Auditor e-Factura", page_icon="🛡️")
 
-try:
-    API_KEY = st.secrets["GOOGLE_API_KEY"]
+
+API_KEY = st.secrets["GOOGLE_API_KEY"]
 
 
 genai.configure(api_key=API_KEY)
@@ -120,5 +120,6 @@ if fisier:
                         st.warning("⚠️ AI-ul este suprasolicitat (Limita Free Tier). Te rog așteaptă 1 minut și încearcă din nou.")
                     else:
                         st.error(f"Eroare la comunicarea cu AI: {e}")
+
 
 
