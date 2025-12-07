@@ -89,25 +89,36 @@ if fisier:
         st.divider()
 
 
-        st.subheader("2. Audit Fiscal (AI)")
 
+        st.subheader("2. Audit Fiscal (AI)")
+        
         if st.button("Scanează pentru Riscuri (Gemini)"):
             with st.spinner("AI-ul analizează conținutul facturii..."):
-                prompt = f"""
-                Ești un auditor fiscal expert în legislația din România.
-                Analizează următoarea factură:
-                Furnizor: {rezultat['furnizor']}
-                Linii factură:
-                {chr(10).join(rezultat['linii_factura'])}
+                try:
+               
+                    prompt = f"""
+                    Ești un auditor fiscal expert în legislația din România.
+                    Analizează următoarea factură:
+                    Furnizor: {rezultat['furnizor']}
+                    Linii factură:
+                    {chr(10).join(rezultat['linii_factura'])}
+                    
+                    Sarcina ta:
+                    1. Analizează dacă descrierea produselor/serviciilor este suficient de clară pentru ANAF.
+                    2. Identifică potențiale riscuri de nedeductibilitate.
+                    3. Dă un verdict scurt: "RISC MIC", "RISC MEDIU" sau "RISC MARE".
+                    
+                    Răspunde scurt și la obiect în limba Română.
+                    """
+                    
+                
+                    response = model.generate_content(prompt)
+                    st.write(response.text)
 
-                Sarcina ta:
-                1. Analizează dacă descrierea produselor/serviciilor este suficient de clară pentru ANAF (evită descrieri vagi gen "Servicii diverse").
-                2. Identifică potențiale riscuri de nedeductibilitate.
-                3. Dă un verdict scurt: "RISC MIC", "RISC MEDIU" sau "RISC MARE".
-
-                Răspunde scurt și la obiect în limba Română.
-                """
-
-                response = model.generate_content(prompt)
-                st.write(response.text)
+                except Exception as e:
+               
+                    if "429" in str(e) or "ResourceExhausted" in str(e):
+                        st.warning("⚠️ AI-ul este suprasolicitat (Limita Free Tier). Te rog așteaptă 1 minut și încearcă din nou.")
+                    else:
+                        st.error(f"Eroare la comunicarea cu AI: {e}")
 
