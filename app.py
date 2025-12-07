@@ -5,13 +5,13 @@ import google.generativeai as genai
 
 st.set_page_config(page_title="Auditor e-Factura", page_icon="🛡️")
 
-
-API_KEY = st.secrets["GOOGLE_API_KEY"]
-
+try:
+    API_KEY = st.secrets["GOOGLE_API_KEY"]
+except:
+    API_KEY = "PUNE_CHEIA_AICI_LOCAL"
 
 genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel('gemini-2.0-flash')
-
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 
 def analizeaza_xml(uploaded_file):
@@ -120,6 +120,7 @@ if fisier:
                         st.warning("⚠️ AI-ul este suprasolicitat (Limita Free Tier). Te rog așteaptă 1 minut și încearcă din nou.")
                     else:
                         st.error(f"Eroare la comunicarea cu AI: {e}")
+
 
 
 
