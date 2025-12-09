@@ -1,179 +1,112 @@
 import streamlit as st
 import xml.etree.ElementTree as ET
-import pandas as pd
-from io import BytesIO
+import google.generativeai as genai
 
-# --- CONFIGURARE PAGINĂ ---
-st.set_page_config(page_title="Auditor e-Factura", page_icon="🧾", layout="wide")
 
-st.title("🧾 Auditor e-Factura (RO)")
-st.markdown("Verificare structură XML și corectitudine calcule (ANAF UBL 2.1)")
+st.set_page_config(page_title="Auditor e-Factura", page_icon="🛡️")
 
-# --- LOGICĂ DE PARSARE XML (E-FACTURA SPECIFIC) ---
-def parse_invoice_xml(file_content):
+try:
+    API_KEY = st.secrets["GOOGLE_API_KEY"]
+except:
+    API_KEY = "PUNE_CHEIA_AICI_LOCAL"
+
+genai.configure(api_key=API_KEY)
+model = genai.GenerativeModel('gemini-2.0-flash')
+
+
+
+def analizeaza_xml(uploaded_file):
     try:
-        tree = ET.parse(file_content)
+        tree = ET.parse(uploaded_file)
         root = tree.getroot()
 
-        # Namespace-urile UBL sunt complicate, de multe ori e mai sigur să le ignorăm
-        # sau să folosim un map, dar pentru robustețe vom curăța tag-urile la căutare
-        # sau vom folosi un dictionar de namespaces standard.
+
         ns = {
-            'cbc': "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2",
-            'cac': "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2",
-            'inv': "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+            'cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
+            'cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2'
         }
 
-        # Helper pentru a extrage text sigur
-        def get_text(element, path, namespaces=ns):
-            node = element.find(path, namespaces)
-            return node.text if node is not None else "N/A"
 
-        # 1. HEADER FACTURĂ
-        invoice_data = {
-            "ID Factura": get_text(root, "cbc:ID"),
-            "Data Emitere": get_text(root, "cbc:IssueDate"),
-            "Tip Factura": get_text(root, "cbc:InvoiceTypeCode"),
-            "Moneda": get_text(root, "cbc:DocumentCurrencyCode")
+        data = {
+            "furnizor": root.find('.//cac:AccountingSupplierParty/cac:Party/cac:PartyName/cbc:Name', ns).text,
+            "client": root.find('.//cac:AccountingCustomerParty/cac:Party/cac:PartyName/cbc:Name', ns).text,
+            "data_emitere": root.find('cbc:IssueDate', ns).text,
+            "subtotal": float(root.find('.//cac:LegalMonetaryTotal/cbc:LineExtensionAmount', ns).text),
+            "total_calculat": float(root.find('.//cac:LegalMonetaryTotal/cbc:TaxInclusiveAmount', ns).text),
+            "total_de_plata": float(root.find('.//cac:LegalMonetaryTotal/cbc:PayableAmount', ns).text),
+            "linii_factura": []  # Vom colecta si produsele pentru AI
         }
 
-        # 2. FURNIZOR (AccountingSupplierParty)
-        supplier = root.find("cac:AccountingSupplierParty/cac:Party", ns)
-        if supplier:
-            invoice_data["Nume Furnizor"] = get_text(supplier, "cac:PartyLegalEntity/cbc:RegistrationName", ns)
-            invoice_data["CUI Furnizor"] = get_text(supplier, "cac:PartyTaxScheme/cbc:CompanyID", ns)
 
-        # 3. CLIENT (AccountingCustomerParty)
-        customer = root.find("cac:AccountingCustomerParty/cac:Party", ns)
-        if customer:
-            invoice_data["Nume Client"] = get_text(customer, "cac:PartyLegalEntity/cbc:RegistrationName", ns)
-            invoice_data["CUI Client"] = get_text(customer, "cac:PartyTaxScheme/cbc:CompanyID", ns)
+        for linie in root.findall('.//cac:InvoiceLine', ns):
+            nume_produs = linie.find('.//cac:Item/cbc:Name', ns).text
+            pret = linie.find('.//cbc:LineExtensionAmount', ns).text
+            data["linii_factura"].append(f"- {nume_produs}: {pret} RON")
 
-        # 4. TOTALURI (TaxTotal & LegalMonetaryTotal)
-        # Atenție: Pot fi mai multe tag-uri TaxTotal (unul pe factură, unul pe linie în unele cazuri rare, dar standardul RO are unul principal)
-        tax_total = root.find("cac:TaxTotal", ns)
-        if tax_total:
-            invoice_data["Total TVA (XML)"] = float(get_text(tax_total, "cbc:TaxAmount", ns) or 0)
-        
-        monetary_total = root.find("cac:LegalMonetaryTotal", ns)
-        if monetary_total:
-            invoice_data["Total Net (XML)"] = float(get_text(monetary_total, "cbc:TaxExclusiveAmount", ns) or 0)
-            invoice_data["Total Brut (XML)"] = float(get_text(monetary_total, "cbc:PayableAmount", ns) or 0)
+        return data
 
-        return invoice_data, root, ns
-
-    except ET.ParseError:
-        return None, None, None
     except Exception as e:
-        return None, str(e), None
+        return {"eroare": str(e)}
 
-# --- UI ÎNCĂRCARE ---
-uploaded_file = st.file_uploader("Încarcă fișierul XML (e-Factura)", type=["xml"])
 
-if uploaded_file:
-    # Citim fișierul
-    data, root_element, namespaces = parse_invoice_xml(uploaded_file)
 
-    if data and root_element:
-        st.success("XML validat structural (Well-formed)")
-        
-        # AFIȘARE SUMAR
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.info("🏢 **Furnizor**")
-            st.write(f"**{data.get('Nume Furnizor')}**")
-            st.write(f"CUI: {data.get('CUI Furnizor')}")
-        
-        with col2:
-            st.info("👤 **Client**")
-            st.write(f"**{data.get('Nume Client')}**")
-            st.write(f"CUI: {data.get('CUI Client')}")
+st.title("🛡️ Auditor Digital e-Factura")
+st.markdown("Verifică instantaneu XML-urile ANAF pentru erori matematice și riscuri fiscale.")
 
-        with col3:
-            st.info("💰 **Detalii Plată**")
-            st.write(f"ID: {data.get('ID Factura')}")
-            st.metric("Total de Plată", f"{data.get('Total Brut (XML)')} {data.get('Moneda')}")
+fisier = st.file_uploader("Încarcă fișierul XML (UBL 2.1)", type=["xml"])
+
+if fisier:
+
+    rezultat = analizeaza_xml(fisier)
+
+    if "eroare" in rezultat:
+        st.error(
+            f"Nu am putut citi fișierul XML. Asigură-te că e format e-Factura valid.\nEroare: {rezultat['eroare']}")
+    else:
+
+        col1, col2 = st.columns(2)
+        col1.info(f"📤 **Furnizor:** {rezultat['furnizor']}")
+        col2.info(f"📥 **Client:** {rezultat['client']}")
 
         st.divider()
 
-        # --- AUDIT DE CALCUL (SIMPLIFICAT) ---
-        st.subheader("🔍 Audit Calcule & Linii")
-        
-        # Extragem liniile pentru a recalcula
-        lines = []
-        calculated_net = 0.0
-        calculated_vat = 0.0
 
-        invoice_lines = root_element.findall("cac:InvoiceLine", namespaces)
-        
-        for line in invoice_lines:
-            line_id = line.find("cbc:ID", namespaces).text
-            # Cantitate
-            qty = float(line.find("cbc:InvoicedQuantity", namespaces).text or 0)
-            # Preț Unitar
-            price_node = line.find("cac:Price/cbc:PriceAmount", namespaces)
-            unit_price = float(price_node.text or 0)
-            
-            # Valoare Netă Linie (LineExtensionAmount)
-            line_net_xml = float(line.find("cbc:LineExtensionAmount", namespaces).text or 0)
-            
-            # Recalculare Net
-            recalc_net = round(qty * unit_price, 2)
-            
-            # Cota TVA
-            tax_category = line.find("cac:Item/cac:ClassifiedTaxCategory", namespaces)
-            vat_percent = float(tax_category.find("cbc:Percent", namespaces).text or 0)
-            
-            # Recalculare TVA
-            recalc_vat = round(line_net_xml * (vat_percent / 100), 2)
+        st.subheader("1. Verificare Matematică")
 
-            calculated_net += line_net_xml
-            calculated_vat += recalc_vat
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Subtotal (Fără TVA)", f"{rezultat['subtotal']:.2f} RON")
+        c2.metric("Total Calculat (Corect)", f"{rezultat['total_calculat']:.2f} RON")
+        c3.metric("Total Cerut (Payable)", f"{rezultat['total_de_plata']:.2f} RON")
 
-            lines.append({
-                "Linie": line_id,
-                "Cantitate": qty,
-                "Preț Unitar": unit_price,
-                "Net (XML)": line_net_xml,
-                "Net (Recalculat)": recalc_net,
-                "TVA %": vat_percent,
-                "TVA (Estimat)": recalc_vat
-            })
+        diferenta = rezultat['total_de_plata'] - rezultat['total_calculat']
 
-        # Afișare tabel linii
-        df_lines = pd.DataFrame(lines)
-        st.dataframe(df_lines, use_container_width=True)
+        if abs(diferenta) > 0.01:
+            st.error(f"❌ ALERTĂ: Factura are erori! Diferență: {diferenta:.2f} RON")
+            st.warning("Această factură riscă să fie respinsă de contabilitate sau ANAF.")
+        else:
+            st.success("✅ Factura este corectă matematic.")
 
-        # --- REZULTAT AUDIT ---
-        st.subheader("Rezultat Audit")
-        
-        col_aud1, col_aud2 = st.columns(2)
-        
-        diff_net = abs(data.get('Total Net (XML)') - calculated_net)
-        diff_vat = abs(data.get('Total TVA (XML)') - calculated_vat)
+        st.divider()
 
-        with col_aud1:
-            st.write("### Verificare Net")
-            st.write(f"XML: {data.get('Total Net (XML)')}")
-            st.write(f"Calculat (sumă linii): {round(calculated_net, 2)}")
-            if diff_net < 0.05: # Toleranță mică
-                st.success("✅ OK")
-            else:
-                st.error(f"❌ Discrepanță: {round(diff_net, 2)}")
 
-        with col_aud2:
-            st.write("### Verificare TVA")
-            st.write(f"XML: {data.get('Total TVA (XML)')}")
-            st.write(f"Calculat (estimare): {round(calculated_vat, 2)}")
-            if diff_vat < 1.0: # Toleranță mai mare la TVA din cauza rotunjirilor per linie vs global
-                st.success("✅ OK (în marja de rotunjire)")
-            else:
-                st.warning(f"⚠️ Posibilă eroare rotunjire sau discrepanță: {round(diff_vat, 2)}")
+        st.subheader("2. Audit Fiscal (AI)")
 
-    elif isinstance(root_element, str):
-        st.error(f"Eroare la parsare: {root_element}")
-    else:
-        st.error("Fișierul nu pare a fi un XML e-Factura valid.")
+        if st.button("Scanează pentru Riscuri (Gemini)"):
+            with st.spinner("AI-ul analizează conținutul facturii..."):
+                prompt = f"""
+                Ești un auditor fiscal expert în legislația din România.
+                Analizează următoarea factură:
+                Furnizor: {rezultat['furnizor']}
+                Linii factură:
+                {chr(10).join(rezultat['linii_factura'])}
 
-else:
-    st.info("Aștept încărcarea unui XML...")
+                Sarcina ta:
+                1. Analizează dacă descrierea produselor/serviciilor este suficient de clară pentru ANAF (evită descrieri vagi gen "Servicii diverse").
+                2. Identifică potențiale riscuri de nedeductibilitate.
+                3. Dă un verdict scurt: "RISC MIC", "RISC MEDIU" sau "RISC MARE".
+
+                Răspunde scurt și la obiect în limba Română.
+                """
+
+                response = model.generate_content(prompt)
+                st.write(response.text)
